@@ -66,7 +66,9 @@ The use of either a Network-Specific Prefix or the Well-Known Prefix
 .B however,
 as required by RFC 6052, TAYGA will refuse to translate packets with a
 source or destination address composed of the Well-Known Prefix and a
-non-global IPv4 address (10.x.x.x, 192.168.x.x, etc).
+non-global IPv4 address (10.x.x.x, 192.168.x.x, etc), unless the 
+.B wkpf-strict
+option is set to no.
 .IP
 Use of the
 .B prefix
@@ -74,6 +76,13 @@ directive is optional.  If it is not specified, all addresses to be translated
 must be listed individually with the
 .B map
 directive.
+.TP
+.BI "wkpf-strict " yes/no
+Enable or disable strict RFC 6052 compliance. If enabled, Tayga will refuse
+with a source or destination address composed of the Well-Known Prefix and a
+non-global IPv4 address (10.x.x.x, 192.168.x.x, etc).
+.IP 
+Enabled by default
 .TP
 .BI "map " "ipv4_address[/length] ipv6_address[/length]"
 Creates a static mapping between RFC 7577 compliant hosts or subnets

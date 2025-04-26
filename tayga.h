@@ -225,6 +225,8 @@ struct config {
 	time_t last_dynamic_maint;
 	time_t last_map_write;
 	int map_write_pending;
+
+	int wkpf_strict;
 };
 
 

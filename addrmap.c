@@ -375,9 +375,10 @@ int append_to_prefix(struct in6_addr *addr6, const struct in_addr *addr4,
 		//Do not allow translation of well-known prefix
 		//But still allow local-use prefix
 		if (prefix->s6_addr32[0] == WKPF && 
-				!prefix->s6_addr32[1] && 
-				!prefix->s6_addr32[2] && 
-				is_private_ip4_addr(addr4))
+			!prefix->s6_addr32[1] && 
+			!prefix->s6_addr32[2] && 
+			gcfg->wkpf_strict &&
+			is_private_ip4_addr(addr4))
 			return -1;
 		addr6->s6_addr32[0] = prefix->s6_addr32[0];
 		addr6->s6_addr32[1] = prefix->s6_addr32[1];
@@ -580,6 +581,9 @@ int map_ip6_to_ip4(struct in_addr *addr4, const struct in6_addr *addr6,
 		if (extract_from_prefix(addr4, addr6, map6->prefix_len) < 0)
 			return -1;
 		if (map6->addr.s6_addr32[0] == WKPF &&
+			map6->addr.s6_addr32[1] == 0 &&
+			map6->addr.s6_addr32[2] == 0 &&
+			gcfg->wkpf_strict &&
 				is_private_ip4_addr(addr4))
 			return -1;
 		s = container_of(map6, struct map_static, map6);

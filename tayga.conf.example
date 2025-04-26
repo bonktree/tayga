@@ -63,6 +63,15 @@ prefix 2001:db8:1:ffff::/96
 # prefix 64:ff9b::/96
 
 #
+# Enable restrictions on use of the well-known prefix (64:ff9b::/96)
+# Prevents translation of non-global IPv4 address ranges when
+# using the well-known prefix
+# 
+# This option must be enabled for RFC 6052 compliance and is enabled by default
+# 
+wkpf-strict no
+
+#
 # Dynamic pool prefix.  IPv6 hosts which send traffic through TAYGA (and do
 # not correspond to a static map or an IPv4-translatable address in the NAT64
 # prefix) will be assigned an IPv4 address from the dynamic pool.  Dynamic

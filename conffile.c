@@ -147,12 +147,6 @@ static void config_ipv6_addr(int ln, int arg_count, char **args)
 				"directive, aborting...\n", args[0]);
 		exit(1);
 	}
-	if (gcfg->local_addr6.s6_addr32[0] == WKPF) {
-		slog(LOG_CRIT, "Error: ipv6-addr directive cannot contain an "
-				"address in the Well-Known Prefix "
-				"(64:ff9b::/96)\n");
-		exit(1);
-	}
 }
 
 static void config_prefix(int ln, int arg_count, char **args)
@@ -192,6 +186,11 @@ static void config_prefix(int ln, int arg_count, char **args)
 	}
 	if (insert_map6(&m->map6, &m6) < 0)
 		abort_on_conflict6("Error: NAT64 prefix", ln, m6);
+}
+
+static void config_wkpf_strict(int ln, int arg_count, char **args)
+{
+	gcfg->wkpf_strict = strcmp("no",args[0]) ? 1 : 0;
 }
 
 static void config_tun_device(int ln, int arg_count, char **args)
@@ -264,10 +263,21 @@ static void config_map(int ln, int arg_count, char **args)
 				"directive, aborting...\n", args[1]);
 		exit(1);
 	}
-	if (m->map6.addr.s6_addr32[0] == WKPF) {
-		slog(LOG_CRIT, "Cannot create single-host maps inside "
-				"64:ff9b::/96, aborting...\n");
-		exit(1);
+	if (m->map6.addr.s6_addr32[0] == WKPF &&
+	    m->map6.addr.s6_addr32[1] == 0 &&
+	    m->map6.addr.s6_addr32[2] == 0) {
+		if(gcfg->wkpf_strict)
+		{
+			slog(LOG_CRIT, "Cannot create single-host maps inside "
+					"64:ff9b::/96, aborting...\n");
+			exit(1);
+		}
+		else 
+		{
+			slog(LOG_INFO, "Should not create single-host maps inside "
+					"64:ff9b::/96, however strict RFC60252"
+					" compliance is disabled\n");
+		}
 	}
 	if (insert_map4(&m->map4, &m4) < 0)
 		abort_on_conflict4("Error: IPv4 address in map directive",
@@ -367,6 +377,7 @@ struct {
 	{ "ipv4-addr", config_ipv4_addr, 1 },
 	{ "ipv6-addr", config_ipv6_addr, 1 },
 	{ "prefix", config_prefix, 1 },
+	{ "wkpf-strict", config_wkpf_strict, 1 },
 	{ "tun-device", config_tun_device, 1 },
 	{ "map", config_map, 2 },
 	{ "dynamic-pool", config_dynamic_pool, 1 },
@@ -407,6 +418,7 @@ void read_config(char *conffile)
 	gcfg->lazy_frag_hdr = 1;
 	INIT_LIST_HEAD(&gcfg->cache_pool);
 	INIT_LIST_HEAD(&gcfg->cache_active);
+	gcfg->wkpf_strict = 1;
 
 	in = fopen(conffile, "r");
 	if (!in) {
@@ -503,13 +515,27 @@ void read_config(char *conffile)
 		}
 		if (append_to_prefix(&gcfg->local_addr6, &gcfg->local_addr4,
 					&m6->addr, m6->prefix_len)) {
-			slog(LOG_CRIT, "Error: ipv6-addr directive must be "
-					"specified if prefix is 64:ff9b::/96 "
-					"and ipv4-addr is a non-global "
-					"(RFC 1918) address\n");
-			exit(1);
+			if(gcfg->wkpf_strict)
+			{
+				slog(LOG_CRIT, "Error: ipv6-addr directive must be "
+						"specified if prefix is 64:ff9b::/96 "
+						"and ipv4-addr is a non-global "
+						"(RFC 1918) address\n");
+				exit(1);
+			}
 		}
 		m->map6.addr = gcfg->local_addr6;
+	}
+	
+	if (gcfg->local_addr6.s6_addr32[0] == WKPF &&
+		gcfg->local_addr6.s6_addr32[1] == 0 &&
+		gcfg->local_addr6.s6_addr32[2] == 0 &&
+		gcfg->wkpf_strict)
+	{
+		slog(LOG_CRIT, "Error: ipv6-addr directive cannot contain an "
+				"address in the Well-Known Prefix "
+				"(64:ff9b::/96)\n");
+		exit(1);
 	}
 	return;
 
