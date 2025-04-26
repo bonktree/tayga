@@ -1,12 +1,6 @@
-******************************************************************************
-                           README for TAYGA v0.9.2
-******************************************************************************
+This repository contains Tayga, imported from its previous release (0.9.2) from Litech.org, plus all patches maintained by Debian applied.
 
-Last updated 2010-12-12
-
---------
-Overview
---------
+# Overview
 
 TAYGA is an out-of-kernel stateless NAT64 implementation for Linux.  It uses
 the TUN driver to exchange packets with the kernel, which is the same driver
@@ -16,9 +10,7 @@ modules, and it is compatible with all 2.4 and 2.6 kernels.
 If you're impatient and you know what stateless NAT64 is, you can skip to the
 Installation & Basic Configuration section.
 
--------------------------------
-Stateless versus Stateful NAT64
--------------------------------
+## Stateless versus Stateful NAT64
 
 Most people are familiar with stateful NAT, which allows N:1 address mapping
 by tracking TCP and UDP sessions and rewriting port numbers on each packet.
@@ -50,9 +42,7 @@ combination with a stateful IPv4 NAT such as the iptables MASQUERADE target.
 This allows the administrator a great deal more flexibility than if stateful
 NAT were implemented directly in TAYGA.
 
-----------------------
-Mapping IPv4 into IPv6
-----------------------
+## Mapping IPv4 into IPv6
 
 TAYGA maps IPv4 addresses into the IPv6 network according to RFC 6052.  This
 states that a 32-bit IPv4 address should be appended to a designated IPv6
@@ -77,9 +67,7 @@ If NAT64 service is needed for only a few hosts instead of the entire IPv4
 address space, TAYGA can be configured without a NAT64 prefix, and address
 maps can be assigned on a host-by-host basis.
 
-----------------------
-Mapping IPv6 into IPv4
-----------------------
+## Mapping IPv6 into IPv4
 
 Being a stateless NAT, TAYGA requires that a unique IPv4 address is assigned
 to every IPv6 host that needs NAT64 service.  This assignment can be done
@@ -101,9 +89,7 @@ daemon, allowing existing TCP and UDP sessions to continue uninterrupted.
 6052 in which IPv6 hosts are numbered with "IPv4-translatable IPv6 addresses"
 carved out of the NAT64 prefix.)
 
-----------------------------------
-Installation & Basic Configuration
-----------------------------------
+# Installation & Basic Configuration
 
 TAYGA uses the GNU Automake/Autoconf system, which requires the `configure`
 script to be run to generate the Makefile prior to building.  The --prefix
@@ -113,7 +99,9 @@ respectively.
 
 After unpacking the distribution tar.bz2 file, run:
 
-  # ./configure && make && make install
+```sh
+./configure && make && make install
+```
 
 This will install the tayga executable in /usr/local/sbin/tayga and the sample
 config file in /usr/local/etc/tayga.conf.example.
@@ -121,49 +109,63 @@ config file in /usr/local/etc/tayga.conf.example.
 Next, if you would like dynamic maps to be persistent between TAYGA restarts,
 create a directory to store the dynamic.map file:
 
-  # mkdir -p /var/db/tayga
+```sh
+mkdir -p /var/db/tayga
+```
 
 Now create your site-specific tayga.conf configuration file.  The installed
 tayga.conf.example file can be copied to tayga.conf and modified to suit your
 site.  Here is a sample minimal configuration:
 
-  tun-device nat64
-  ipv4-addr 192.168.255.1
-  prefix 2001:db8:1:ffff::/96     # replace with a prefix from
-                                  # your site's address range
-  dynamic-pool 192.168.255.0/24
-  data-dir /var/db/tayga          # omit if you do not need persistent
-                                  # dynamic address maps
+```ini
+tun-device nat64
+ipv4-addr 192.168.255.1
+prefix 2001:db8:1:ffff::/96     # replace with a prefix from
+                                # your site's address range
+dynamic-pool 192.168.255.0/24
+data-dir /var/db/tayga          # omit if you do not need persistent
+                                # dynamic address maps
+```
 
 Before starting the TAYGA daemon, the routing setup on your system will need
 to be changed to send IPv4 and IPv6 packets to TAYGA.  First create the TUN
 network interface:
 
-  # tayga --mktun
+```sh
+tayga --mktun
+```
 
 If TAYGA prints any errors, you will need to fix your config file before
 continuing.  Otherwise, the new nat64 interface can be configured and the
 proper routes can be added to your system:
 
-  # ip link set nat64 up
-  # ip addr add 2001:db8:1::1 dev nat64  # replace with your router's address
-  # ip addr add 192.168.0.1 dev nat64    # replace with your router's address
-  # ip route add 2001:db8:1:ffff::/96 dev nat64  # from tayga.conf
-  # ip route add 192.168.255.0/24 dev nat64      # from tayga.conf
+```sh
+ip link set nat64 up
+ip addr add 2001:db8:1::1 dev nat64  # replace with your router's address
+ip addr add 192.168.0.1 dev nat64    # replace with your router's address
+ip route add 2001:db8:1:ffff::/96 dev nat64  # from tayga.conf
+ip route add 192.168.255.0/24 dev nat64      # from tayga.conf
+```
 
 Firewalling your NAT64 prefix from outside access is highly recommended:
 
-  # ip6tables -A FORWARD -s 2001:db8:1::/48 -d 2001:db8:1:ffff::/96 -j ACCEPT
-  # ip6tables -A FORWARD -d 2001:db8:1:ffff::/96 -j DROP
+```sh
+ip6tables -A FORWARD -s 2001:db8:1::/48 -d 2001:db8:1:ffff::/96 -j ACCEPT
+ip6tables -A FORWARD -d 2001:db8:1:ffff::/96 -j DROP
+```
 
 At this point, you may start the tayga process:
 
-  # tayga
+```sh
+tayga
+```
 
-Check your system log (/var/log/syslog or /var/log/messages) for status
+Check your system log (`/var/log/syslog` or `/var/log/messages`) for status
 information.
 
 If you are having difficulty configuring TAYGA, use the -d option to run the
 tayga process in the foreground and send all log messages to stdout:
 
-  # tayga -d
+```sh
+tayga -d
+```
