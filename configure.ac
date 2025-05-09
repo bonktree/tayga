@@ -1,4 +1,4 @@
-AC_INIT(tayga, 0.9.2)
+AC_INIT([tayga],[0.9.3])
 AC_CONFIG_SRCDIR(nat64.c)
 AM_INIT_AUTOMAKE([foreign dist-bzip2])
 AC_CONFIG_HEADERS(config.h)
@@ -26,4 +26,5 @@ tayga_conf_path='${sysconfdir}/tayga.conf'
 
 AC_SUBST(tayga_conf_path)
 
-AC_OUTPUT([Makefile])
+AC_CONFIG_FILES([Makefile])
+AC_OUTPUT
