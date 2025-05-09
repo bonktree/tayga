@@ -3,13 +3,27 @@
 # Default environment variables
 TAYGA_POOL4="${TAYGA_POOL4:-192.168.255.0/24}"
 TAYGA_POOL6="${TAYGA_POOL6:-64:ff9b::/96}"
-TAYGA_ADDR4="${TAYGA_ADDR4:-192.168.255.1}"
 TAYGA_WKPF_STRICT="${TAYGA_WKPF_STRICT:-no}"
 
+# Auto-detect ADDR4 and ADDR6 from the container if not set
+if [[ -z "${TAYGA_ADDR4}" ]]; then
+    ADDR4=$(ip addr show eth0 | grep -E 'inet ' | awk '{print $2}' | cut -d'/' -f1 | head -n 1)
+    if [[ -z "${ADDR4}" ]]; then
+        echo "No IPv4 address found on iface eth0, exiting"
+        exit 1
+    fi
+    TAYGA_ADDR4="${ADDR4}"
+    echo Using Container Addr4 $TAYGA_ADDR4
+fi
+
 if [[ -z "${TAYGA_ADDR6}" ]]; then
-    IP6ADDR=""
-else
-    IP6ADDR="ipv6-addr ${TAYGA_ADDR6}"
+    ADDR6=$(ip addr show eth0 | grep -E 'inet6 ' | awk '{print $2}' | cut -d'/' -f1 | head -n 1)
+    if [[ -z "${ADDR6}" ]]; then
+        echo "No IPv6 address found, exiting"
+        exit 1
+    fi
+    TAYGA_ADDR6="${ADDR6}"
+    echo Using Container Addr6 $TAYGA_ADDR6
 fi
 
 # Generate tayga.conf file
@@ -21,7 +35,7 @@ tun-device nat64
 ipv4-addr ${TAYGA_ADDR4}
 prefix ${TAYGA_POOL6}
 dynamic-pool ${TAYGA_POOL4}
-${IP6ADDR}
+ipv6-addr ${TAYGA_ADDR6}
 data-dir /var/tayga
 wkpf-strict ${TAYGA_WKPF_STRICT}
 EOF
@@ -30,13 +44,13 @@ EOF
 if test -f /app/tayga.conf; then
     echo "tayga.conf already exists, not overwriting"
 else
-    echo "tayga.conf does not exist, creating it"
+    echo "tayga.conf does not exist, creating it from environment variables"
     mv /app/tayga.conf.gen /app/tayga.conf
 fi
 
 # Make tunnel adapter
 echo "Creating tunnel adapter"
-/app/tayga -c /app/tayga.conf -d --mktun
+/app/tayga -c /app/tayga.conf -d --mktun || exit 1
 
 # Bring up the interface
 echo "Bringing up the interface"
@@ -52,3 +66,7 @@ echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
 # Start tayga
 echo "Starting tayga"
 /app/tayga -c /app/tayga.conf -d
+
+# Delete tunnel adapter on exit
+echo "Deleting tunnel adapter on exit"
+ip link del nat64
