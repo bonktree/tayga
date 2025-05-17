@@ -2,7 +2,7 @@
 #   part of TAYGA <https://github.com/apalrd/tayga> test suite
 #   Copyright (C) 2025  Andrew Palardy <andrew@apalrd.net>
 # 
-#   test/addressing.py - IPv6 Addressing Tests
+#   test/addressing.py - V4-in-V6 Addressing Tests
 #   ref. RFC 6052, RFC 8125
 #
 
@@ -56,7 +56,7 @@ def ip_val(pkt):
 
 
 ####
-#  Generic IPv Validator
+#  Generic IPv6 Validator
 ####
 def ip6_val(pkt):
     global expect_sa
@@ -81,198 +81,6 @@ def ip6_val(pkt):
 
 
 
-#############################################
-# Variable Prefix Length (RFC 6052 2.2)
-#############################################
-def sec_2_2():
-    global expect_sa
-    global expect_da
-    global expect_len
-    global expect_proto
-    global expect_data
-
-    ## For each test, validate 4->6 and 6->4
-    rt = router("3fff:6464::/32")
-    rt.apply()
-
-    # /32
-    # Reconfigure Tayga:
-    test.tayga_conf.default()
-    test.tayga_conf.prefix = "3fff:6464::/32"
-    test.reload() 
-    #v6 -> v4
-    expect_sa = test.public_ipv6_xlate
-    expect_da = test.public_ipv4
-    expect_data = randbytes(128)
-    expect_len = 128+20
-    send_pkt = IPv6(dst=str("3fff:6464:c0a8:102::"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/32 v6->v4")
-    #v4->v6 with nonzero suffix
-    expect_data = randbytes(128)
-    send_pkt = IPv6(dst=str("3fff:6464:c0a8:102::abcd"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/32 v6->v4 w/ nonzero suffix")
-    #v4->v6 with nonzero u
-    expect_data = randbytes(128)
-    send_pkt = IPv6(dst=str("3fff:6464:c0a8:102:ab00::"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/32 v6->v4 w/ nonzero u")
-    #v4->v6 with nonzero u and suffix
-    expect_data = randbytes(128)
-    send_pkt = IPv6(dst=str("3fff:6464:c0a8:102:abcd:ef12:5678:1234"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/32 v6->v4 w/ nonzero suffix and u")
-    #v4 -> v6
-    expect_sa = "3fff:6464:c0a8:102::"
-    expect_da = test.public_ipv6
-    expect_data = randbytes(128)
-    expect_len = 128
-    send_pkt = IP(dst=str(test.public_ipv6_xlate),src=str(test.public_ipv4),proto=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip6_val, "/32 v4->v6")
-
-
-    # /40
-    # Reconfigure Tayga:
-    test.tayga_conf.prefix = "3fff:6464::/40"
-    test.reload()
-    #v6 -> v4
-    expect_sa = test.public_ipv6_xlate
-    expect_da = test.public_ipv4
-    expect_data = randbytes(128)
-    expect_len = 128+20
-    send_pkt = IPv6(dst=str("3fff:6464:00c0:a801:0002::"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/40 v6->v4")
-    #v4->v6 with nonzero suffix
-    expect_data = randbytes(128)
-    send_pkt = IPv6(dst=str("3fff:6464:00c0:a801:0002:abcd:ef12:5678"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/40 v6->v4 w/ nonzero suffix")
-    #v4->v6 with nonzero u
-    expect_data = randbytes(128)
-    send_pkt = IPv6(dst=str("3fff:6464:00c0:a801:fb02::"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/40 v6->v4 w/ nonzero u")
-    #v4->v6 with nonzero u and suffix
-    expect_data = randbytes(128)
-    send_pkt = IPv6(dst=str("3fff:6464:00c0:a801:cd02:1234:5678:1245"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/40 v6->v4 w/ nonzero suffix and u")
-    #v4 -> v6
-    expect_sa = "3fff:6464:c0:a801:2::"
-    expect_da = test.public_ipv6
-    expect_data = randbytes(128)
-    expect_len = 128
-    send_pkt = IP(dst=str(test.public_ipv6_xlate),src=str(test.public_ipv4),proto=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip6_val, "/40 v4->v6")
-
-
-    # /48
-    # Reconfigure Tayga:
-    test.tayga_conf.prefix = "3fff:6464::/48"
-    test.reload()
-    #v6 -> v4
-    expect_sa = test.public_ipv6_xlate
-    expect_da = test.public_ipv4
-    expect_data = randbytes(128)
-    expect_len = 128+20
-    send_pkt = IPv6(dst=str("3fff:6464:0:c0a8:1:0200::"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/48 v6->v4")
-    #v4->v6 with nonzero suffix
-    expect_data = randbytes(128)
-    send_pkt = IPv6(dst=str("3fff:6464:0:c0a8:1:0200:ef12:5678"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/48 v6->v4 w/ nonzero suffix")
-    #v4->v6 with nonzero u
-    expect_data = randbytes(128)
-    send_pkt = IPv6(dst=str("3fff:6464:0:c0a8:fa01:0200::"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/48 v6->v4 w/ nonzero u")
-    #v4->v6 with nonzero u and suffix
-    expect_data = randbytes(128)
-    send_pkt = IPv6(dst=str("3fff:6464:0:c0a8:6901:0200:ef12:5678"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/48 v6->v4 w/ nonzero suffix and u")
-    #v4 -> v6
-    expect_sa = "3fff:6464:0:c0a8:1:200::"
-    expect_da = test.public_ipv6
-    expect_data = randbytes(128)
-    expect_len = 128
-    send_pkt = IP(dst=str(test.public_ipv6_xlate),src=str(test.public_ipv4),proto=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip6_val, "/48 v4->v6")
-
-    # /56
-    # Reconfigure Tayga:
-    test.tayga_conf.prefix = "3fff:6464::/56"
-    test.reload()
-    #v6 -> v4
-    expect_sa = test.public_ipv6_xlate
-    expect_da = test.public_ipv4
-    expect_data = randbytes(128)
-    expect_len = 128+20
-    send_pkt = IPv6(dst=str("3fff:6464:0:c0:a8:102::"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/56 v6->v4")
-    #v4->v6 with nonzero suffix
-    expect_data = randbytes(128)
-    send_pkt = IPv6(dst=str("3fff:6464:0:c0:a8:102:1234:5678"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/56 v6->v4 w/ nonzero suffix")
-    #v4->v6 with nonzero u
-    expect_data = randbytes(128)
-    send_pkt = IPv6(dst=str("3fff:6464:0:c0:dca8:102::"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/56 v6->v4 w/ nonzero u")
-    #v4->v6 with nonzero u and suffix
-    expect_data = randbytes(128)
-    send_pkt = IPv6(dst=str("3fff:6464:0:c0:eda8:102:4567:9817"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/56 v6->v4 w/ nonzero suffix and u")
-    #v4 -> v6
-    expect_sa = "3fff:6464:0:c0:a8:102::"
-    expect_da = test.public_ipv6
-    expect_data = randbytes(128)
-    expect_len = 128
-    send_pkt = IP(dst=str(test.public_ipv6_xlate),src=str(test.public_ipv4),proto=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip6_val, "/56 v4->v6")
-
-    # /64
-    # Reconfigure Tayga:
-    test.tayga_conf.prefix = "3fff:6464::/64"
-    test.reload()
-    #v6 -> v4
-    expect_sa = test.public_ipv6_xlate
-    expect_da = test.public_ipv4
-    expect_data = randbytes(128)
-    expect_len = 128+20
-    send_pkt = IPv6(dst=str("3fff:6464::c0:a801:200:0"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/64 v6->v4")
-    #v4->v6 with nonzero suffix
-    expect_data = randbytes(128)
-    send_pkt = IPv6(dst=str("3fff:6464::c0:a801:200:feed"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/64 v6->v4 w/ nonzero suffix")
-    #v4->v6 with nonzero u
-    expect_data = randbytes(128)
-    send_pkt = IPv6(dst=str("3fff:6464::15c0:a801:200:0"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/64 v6->v4 w/ nonzero u")
-    #v4->v6 with nonzero u and suffix
-    expect_data = randbytes(128)
-    send_pkt = IPv6(dst=str("3fff:6464::68c0:a801:200:face"),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/64 v6->v4 w/ nonzero suffix and u")
-    #v4 -> v6
-    expect_sa = "3fff:6464::c0:a801:200:0"
-    expect_da = test.public_ipv6
-    expect_data = randbytes(128)
-    expect_len = 128
-    send_pkt = IP(dst=str(test.public_ipv6_xlate),src=str(test.public_ipv4),proto=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip6_val, "/64 v4->v6")
-
-    # /96
-    #reconfigure tayga
-    test.tayga_conf.default()
-    test.reload()
-    expect_sa = test.public_ipv6_xlate
-    expect_da = test.public_ipv4
-    expect_data = randbytes(128)
-    expect_len = 128+20
-    send_pkt = IPv6(dst=str(test.public_ipv4_xlate),src=str(test.public_ipv6),nh=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip_val, "/96 v6->v4")
-    expect_sa = test.public_ipv4_xlate
-    expect_da = test.public_ipv6
-    expect_data = randbytes(128)
-    expect_len = 128
-    send_pkt = IP(dst=str(test.public_ipv6_xlate),src=str(test.public_ipv4),proto=16) / Raw(expect_data)
-    send_and_check(test,send_pkt,ip6_val, "/96 v4->v6")
-
-    # Cleanup
-    rt.remove()
-    test.section("Variable Prefix Length (RFC 6052 2.2)")
 
 ####
 #  Generic Prefix Test
@@ -385,15 +193,18 @@ def test_prefix(pref,net,name,expect_drop,expect_icmp):
         send_and_check(test,send_pkt,ip6_val, name+" v4 src") 
 
 
+
 #############################################
 # Public Prefix Limitations Generic Function
 #############################################
-def sec_3_1_generic(pref,strict,expect_drop,expect_icmp):
+def prefix_generic(pref,strict,expect_drop,expect_icmp):
     global expect_sa
     global expect_da
     global expect_len
     global expect_proto
     global expect_data
+    global test
+
 
     # Setup config for this section
     test.tayga_conf.default()
@@ -410,6 +221,7 @@ def sec_3_1_generic(pref,strict,expect_drop,expect_icmp):
     test_prefix(pref,"198.51.100.10","TEST-NET-2",expect_drop,expect_icmp)
     test_prefix(pref,"203.0.113.69","TEST-NET-3",expect_drop,expect_icmp)
     test_prefix(pref,"198.18.0.20","Benchmarking Space",expect_drop,expect_icmp)
+    # These prefixes should not be prevented from translation
     test_prefix(pref,"192.0.0.2","DSLite Space",False,False)
     test_prefix(pref,"192.88.99.52","6to4 Relay Space",False,False)
 
@@ -418,33 +230,33 @@ def sec_3_1_generic(pref,strict,expect_drop,expect_icmp):
 #############################################
 # Well Known Prefix Restricted (RFC 6042 3.1) w/ WKPF-Strict
 #############################################
-def sec_3_1_strict():
+def wkpf_strict():
     #Use common section 3.1 function
-    sec_3_1_generic("64:ff9b::",True,False,True)
+    prefix_generic("64:ff9b::",True,False,True)
     test.section("Well Known Prefix Restricted (RFC 6042 3.1) w/ WKPF-Strict")
 
 
 #############################################
-# Well Known Prefix Restricted (RFC 6042 3.1) w/o WKPF-Strict
+# Public Prefix Limitations Generic Function
 #############################################
-def sec_3_1_not_strict():
+def wkpf_not_strict():
     #Use common section 3.1 function
-    sec_3_1_generic("64:ff9b::",False,False,False)
+    prefix_generic("64:ff9b::",False,False,False)
     test.section("Well Known Prefix Restricted (RFC 6042 3.1) w/o WKPF-Strict")
 
 
 #############################################
 # Local Use Well Known Prefix (RFC 6052 Sec 3.1 + RFC 8215)
 #############################################
-def sec_3_1_rfc8215():
+def rfc8215_local_use():
     #Use common section 3.1 function
-    sec_3_1_generic("64:ff9b:1::",True,False,False)
+    prefix_generic("64:ff9b:1::",True,False,False)
     test.section("Local-Use Well Known Prefix (RFC 8215)")
 
 #############################################
 # Invalid / Out of Scope Addresses (RFC 6052 5.1)
 #############################################
-def sec_5_1():
+def invalid_ranges():
     # Setup config for this section
     test.tayga_conf.default()
     test.reload()
@@ -488,18 +300,14 @@ def sec_5_1():
 
 #test.debug = True
 test.timeout = 0.1
-test.tayga_log_file = "test/addressing.log"
 test.tayga_bin = "./tayga-cov"
-test.pcap_file = "test/addressing.pcap"
-#test.pcap_test_env = True
 test.setup()
 
 # Call all tests
-sec_2_2()
-sec_3_1_strict()
-sec_3_1_not_strict()
-sec_3_1_rfc8215()
-sec_5_1()
+wkpf_strict()
+wkpf_not_strict()
+rfc8215_local_use()
+invalid_ranges()
 
 time.sleep(1)
 test.cleanup()
