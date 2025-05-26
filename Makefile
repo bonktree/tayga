@@ -1,7 +1,7 @@
 # Simple Makefile generated based on makefile.am
 
 CC := gcc
-CFLAGS := -Wall -O2 -Isrc
+CFLAGS := -Wall -O2
 LDFLAGS := 
 SOURCES := nat64.c addrmap.c dynamic.c tayga.c conffile.c
 TARGET := tayga
@@ -10,15 +10,21 @@ TARGET-COV := $(TARGET)-cov
 all: $(TARGET)
 cov: $(TARGET-COV)
 
+# Version generation
+version.h: .git/*
+	@echo "#define TAYGA_VERSION \"$(shell git describe --tags --abbrev=0)\"" > $@
+	@echo "#define TAYGA_COMMIT \"$(shell git rev-parse HEAD)\"" >> $@
+
 # Dependency generation
-DEPS := $(SOURCES:.c=.d)
-%.d: %.c
-	@$(CC) $(CFLAGS) -MM -MT $(@:.d=.o) $< > $@
+tayga.d: $(SOURCES) version.h Makefile
+	$(CC) $(CFLAGS) -MM $(SOURCES) -MT tayga $< > $@
 
--include $(DEPS)
+-include tayga.d
 
-$(TARGET): $(SOURCES)
-	$(CC) $(LDFLAGS) -o $@ $(SOURCES)
+
+
+$(TARGET): $(SOURCES) Makefile
+	$(CC) $(CFLAGS) -o $@ $(SOURCES) $(LDFLAGS) -flto
 
 $(TARGET-COV): $(TARGET)
 	$(CC) $(LDFLAGS) -o $@ $(SOURCES) -coverage -fcondition-coverage
@@ -27,7 +33,7 @@ cov-report:
 	gcov -a -g -f *.gcno
 
 clean:
-	rm -f $(TARGET) $(DEPS) $(TARGET-COV) *.gcda *.gcno
+	rm -f $(TARGET) tayga.d version.h $(TARGET-COV) *.gcda *.gcno
 
 install: $(TARGET)
 	# TODO

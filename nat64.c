@@ -39,7 +39,7 @@ static uint16_t ip_checksum(void *d, int c)
 	return ~sum;
 }
 
-static uint16_t ones_add(uint16_t a, uint16_t b)
+static inline uint16_t ones_add(uint16_t a, uint16_t b)
 {
 	uint32_t sum = (uint16_t)~a + (uint16_t)~b;
 
@@ -66,20 +66,23 @@ static uint16_t ip6_checksum(struct ip6 *ip6, uint32_t data_len, uint8_t proto)
 
 static uint16_t convert_cksum(struct ip6 *ip6, struct ip4 *ip4)
 {
-	uint32_t sum = 0;
-	uint16_t *p;
-	int i;
+	uint64_t sum = 0;
+	
+	sum += ~ip4->src.s_addr;
+	sum += ~ip4->dest.s_addr;
+	sum += ip6->src.s6_addr32[0];
+	sum += ip6->src.s6_addr32[1];
+	sum += ip6->src.s6_addr32[2];
+	sum += ip6->src.s6_addr32[3];
+	sum += ip6->dest.s6_addr32[0];
+	sum += ip6->dest.s6_addr32[1];
+	sum += ip6->dest.s6_addr32[2];
+	sum += ip6->dest.s6_addr32[3];
 
-	sum += ~ip4->src.s_addr >> 16;
-	sum += ~ip4->src.s_addr & 0xffff;
-	sum += ~ip4->dest.s_addr >> 16;
-	sum += ~ip4->dest.s_addr & 0xffff;
-
-	for (i = 0, p = ip6->src.s6_addr16; i < 16; ++i)
-		sum += *p++;
-
-	while (sum > 0xffff)
-		sum = (sum & 0xffff) + (sum >> 16);
+	/* Fold carry-arounds */
+	if(sum > 0xffffffff) sum = (sum & 0xffffffff) + (sum >> 32);
+	if(sum > 0xffff) sum = (sum & 0xffff) + (sum >> 16);
+	if(sum > 0xffff) sum = (sum & 0xffff) + (sum >> 16);
 
 	return sum;
 }
@@ -475,10 +478,11 @@ static void xlate_4to6_icmp_error(struct pkt *p)
 			if (mtu < 68)
 				mtu = est_mtu(ntohs(p_em.ip4->length));
 			mtu += MTU_ADJ;
+			/* Path MTU > our own MTU */
 			if (mtu > gcfg->mtu)
 				mtu = gcfg->mtu;
-			if (mtu < 1280 && gcfg->allow_ident_gen && orig_dest) {
-				orig_dest->flags |= CACHE_F_GEN_IDENT;
+			/* Set MTU to 1280 to prevent generation of atomic fragments */
+			if (mtu < 1280) {
 				mtu = 1280;
 			}
 			header.icmp.word = htonl(mtu);
@@ -672,18 +676,28 @@ static void xlate_header_6to4(struct pkt *p, struct ip4 *ip4,
 	ip4->ver_ihl = 0x45;
 	ip4->tos = (ntohl(p->ip6->ver_tc_fl) >> 20) & 0xff;
 	ip4->length = htons(sizeof(struct ip4) + payload_length);
+	/* Have an IPv6 fragment header, translate to a v4 fragment */
 	if (p->ip6_frag) {
 		ip4->ident = htons(ntohl(p->ip6_frag->ident) & 0xffff);
 		ip4->flags_offset =
 			htons(ntohs(p->ip6_frag->offset_flags) >> 3);
 		if (p->ip6_frag->offset_flags & htons(IP6_F_MF))
 			ip4->flags_offset |= htons(IP4_F_MF);
-	} else if (dest && (dest->flags & CACHE_F_GEN_IDENT) &&
-			p->header_len + payload_length <= 1280) {
-		ip4->ident = htons(dest->ip4_ident++);
+		/* Always clear DF bit */
+		ip4->flags_offset &= ~htons(IP4_F_DF);
+	/* Smol packets can be fragmented downstream */
+	} else if (p->header_len + payload_length <= 1280) {
+		/* Need to generate a psuedo-random ident value
+		 * A simple counter is not secure enough
+		 * However, it doesn't actually seem to be that random in practice
+		 * ref. https://datatracker.ietf.org/doc/html/rfc7739#appendix-B
+		 * */
+		static uint32_t ident = 0xb00b;
+		if(ident & 0x1) ident ^= 0x6464beef;
+		ident >>= 1;
+		ip4->ident = (ident& 0xffff);
 		ip4->flags_offset = 0;
-		if (dest->ip4_ident == 0)
-			dest->ip4_ident++;
+	/* Packets > 1280 must kick back a Packet Too Big */
 	} else {
 		ip4->ident = 0;
 		ip4->flags_offset = htons(IP4_F_DF);
@@ -796,6 +810,8 @@ static void xlate_6to4_data(struct pkt *p)
 static int parse_ip6(struct pkt *p)
 {
 	int hdr_len;
+	uint8_t seg_left = 0;
+	uint16_t seg_ptr = sizeof(struct ip6);
 
 	p->ip6 = (struct ip6 *)(p->data);
 
@@ -819,6 +835,13 @@ static int parse_ip6(struct pkt *p)
 		hdr_len = (p->data[1] + 1) * 8;
 		if (p->data_len < hdr_len)
 			return -1;
+		/* If it's a routing header, extract segments left 
+		 * We will drop the packet, but need to finish parsing it first
+		 */
+		if(p->data_proto == 43) seg_left = p->data[3];
+		if(!seg_left) seg_ptr += hdr_len;
+
+		/* Extract next header from extension header */
 		p->data_proto = p->data[0];
 		p->data += hdr_len;
 		p->data_len -= hdr_len;
@@ -850,6 +873,17 @@ static int parse_ip6(struct pkt *p)
 		if (p->data_len < sizeof(struct icmp))
 			return -1;
 		p->icmp = (struct icmp *)(p->data);
+	}
+
+	/* IF we got a routing header with segments left
+	 * kick back a Parameter Problem pointing to the seg field
+	 */
+	if(seg_left) {
+		seg_ptr += 4;
+		slog(LOG_DEBUG,"%s:%d:IPv6 Routing Header w/ Segments Left ptr=%d\n", 
+			 __FUNCTION__,__LINE__,seg_ptr);
+		host_send_icmp6_error(4, 0, seg_ptr, p);
+		return -1;
 	}
 
 	return 0;

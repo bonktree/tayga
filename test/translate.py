@@ -221,12 +221,14 @@ def ip_val(pkt):
         expect_nh = expect_ref[IPv6ExtHdrRouting].nh
     res.compare("Length",pkt[IP].len,expect_len)
     res.compare("Proto",pkt[IP].proto,expect_nh)
-    res.compare("ID",pkt[IP].id,0)
     #Flags are either DF or None depending on packet size
     if expect_len > 1260:
         res.compare("Flags",pkt[IP].flags,"DF")
+        res.compare("ID",pkt[IP].id,0)
     else:
         res.compare("Flags",pkt[IP].flags,0)
+        #ID is psuedo-randomly generated, but must not be zero
+        res.check("ID Nonzero",(pkt[IP].id != 0))
     res.compare("Frag",pkt[IP].frag,0)
     res.compare("TTL",pkt[IP].ttl,expect_ref[IPv6].hlim-3) #test setup has 3 trips
     res.compare("Src",pkt[IP].src,str(expect_sa))
@@ -864,6 +866,11 @@ def sec_5_1():
     global expect_ref
     global expect_sa
     global expect_da
+    global expect_class
+    global expect_type
+    global expect_code
+    global expect_ptr
+    
     expect_sa = test.public_ipv6_xlate
     expect_da = test.public_ipv4
 
@@ -919,19 +926,34 @@ def sec_5_1():
     expect_ref = IPv6(dst=str(test.public_ipv4_xlate),src=str(test.public_ipv6),plen=72+8) / IPv6ExtHdrRouting(nh=16,segleft=0,type=253) / Raw(randbytes(72))
     test.send_and_check(expect_ref,ip_val, "Routing w/o segments left")
 
-    # IPv6 Route w/o segments left
+    # IPv6 Route w/o segments left (expect ICMP kickback)
+    expect_class = ICMPv6ParamProblem()
+    expect_type = 4
+    expect_code = 0
+    expect_ptr = 44
+    expect_sa = test.tayga_ipv6
+    expect_da = test.public_ipv6
     expect_ref = IPv6(dst=str(test.public_ipv4_xlate),src=str(test.public_ipv6),plen=72+8) / IPv6ExtHdrRouting(nh=16,segleft=4,type=253) / Raw(randbytes(72))
-    test.send_and_none(expect_ref, "Routing w/ segments left")
+    test.send_and_check(expect_ref,icmp6_val, "Routing w/ segments left")
 
     # Multiple IPv6 Option Headers
+    expect_sa = test.public_ipv6_xlate
+    expect_da = test.public_ipv4
     expect_ref = IPv6(dst=str(test.public_ipv4_xlate),src=str(test.public_ipv6),plen=72+8+8) / IPv6ExtHdrHopByHop() / IPv6ExtHdrDestOpt(nh=16) / Raw(randbytes(72))
     test.send_and_check(expect_ref,ip_val, "Hop-By-Hop + Dest Option")
     expect_ref = IPv6(dst=str(test.public_ipv4_xlate),src=str(test.public_ipv6),plen=72+8+8+8) / IPv6ExtHdrHopByHop() / IPv6ExtHdrDestOpt() / IPv6ExtHdrRouting(nh=16,segleft=0,type=253) / Raw(randbytes(72))
     test.send_and_check(expect_ref,ip_val, "Hop-By-Hop + Dest + Routing Option")
+ 
+    # Multiple IPv6 Option Headers w/ routing segments remaining
+    expect_ptr = 52
+    expect_sa = test.tayga_ipv6
+    expect_da = test.public_ipv6
     expect_ref = IPv6(dst=str(test.public_ipv4_xlate),src=str(test.public_ipv6),plen=72+8+8) / IPv6ExtHdrHopByHop() / IPv6ExtHdrRouting(nh=16,segleft=4,type=253) / Raw(randbytes(72))
-    test.send_and_none(expect_ref, "Hop-By-Hop + Routing Segments Left Option")
+    test.send_and_check(expect_ref,icmp6_val, "Hop-By-Hop + Routing Segments Left Option")
 
     # Fragmentation Needed
+    expect_sa = test.public_ipv6_xlate
+    expect_da = test.public_ipv4
     test.tfail("Fragmentation Needed","Not Implemented")
 
     # IPv6 Fragment Header
@@ -959,7 +981,8 @@ def sec_5_2():
 
     #Expected address is same for all tests
     expect_sa = test.public_ipv6_xlate
-
+    expect_ptr = -1
+    
     ####
     #  ICMPv6 PING TYPES (Type 128 / Type 129)
     ####
@@ -1333,8 +1356,6 @@ def sec_5_5():
 
 #test.debug = True
 test.timeout = 0.1
-test.tayga_bin = "./tayga-cov"
-#test.pcap_test_env = True
 test.setup()
 
 # Call all tests

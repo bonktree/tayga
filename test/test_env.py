@@ -238,8 +238,17 @@ class test_env:
             self.tayga_log = None
 
         try:
+            new_args = ["-c",self.tayga_conf_file,"-d"]
+            total_args = []
+            if self.use_valgrind:
+                #Append valgrind command
+                total_args.extend(self.valgrind_opts)
+            # Append Tayga command
+            total_args.append(self.tayga_bin)
+            # Append args to Tayga
+            total_args.extend(new_args)
             self.tayga_proc = subprocess.Popen(
-            [self.tayga_bin, "-c", self.tayga_conf_file,"-d"],
+            total_args,
             stdout=self.tayga_log if self.tayga_log else subprocess.DEVNULL,
             stderr=subprocess.STDOUT
             )
@@ -300,6 +309,10 @@ class test_env:
         self.test_failed = 0
         self.timeout = 1 # seconds
         self.tayga_conf = confgen()
+        # Valgrind
+        self.use_valgrind = False
+        self.valgrind_opts = ["valgrind", "--tool=callgrind","--dump-instr=yes","--simulate-cache=yes","--collect-jumps=yes"]
+
         # write report header
         with open(self.file_path, 'w') as report_file:
             report_file.write("Test Report "+self.test_name+"\n")
