@@ -26,6 +26,7 @@
 #include <grp.h>
 
 #define USAGE_TEXT	\
+"TAYGA version %s\n" \
 "Usage: %s [-c|--config CONFIGFILE] [-d] [-n|--nodetach] [-u|--user USERID]\n" \
 "             [-g|--group GROUPID] [-r|--chroot] [-p|--pidfile PIDFILE]\n\n" \
 "--config FILE      : Read configuration options from FILE\n" \
@@ -150,6 +151,8 @@ static void tun_setup(int do_mktun, int do_rmtun)
 				strerror(errno));
 		exit(1);
 	}
+
+	/* Query MTU from tun adapter */
 	memset(&ifr, 0, sizeof(ifr));
 	strcpy(ifr.ifr_name, gcfg->tundev);
 	if (ioctl(fd, SIOCGIFMTU, &ifr) < 0) {
@@ -159,7 +162,13 @@ static void tun_setup(int do_mktun, int do_rmtun)
 	}
 	close(fd);
 
+	/* MTU is less than 1280, not allowed */
 	gcfg->mtu = ifr.ifr_mtu;
+	if(gcfg->mtu < MTU_MIN) {
+		slog(LOG_CRIT, "MTU of %d is too small, must be at least %d\n",
+				gcfg->mtu, MTU_MIN);
+		exit(1);
+	}
 
 	slog(LOG_INFO, "Using tun device %s with MTU %d\n", gcfg->tundev,
 			gcfg->mtu);
@@ -441,7 +450,7 @@ int main(int argc, char **argv)
 				}
 				do_rmtun = 1;
 			} else if (longind == 2) {
-				fprintf(stderr, USAGE_TEXT, argv[0]);
+				fprintf(stderr, USAGE_TEXT, TAYGA_VERSION, argv[0]);
 				exit(0);
 			}
 			break;
@@ -582,7 +591,9 @@ int main(int argc, char **argv)
 		close(pidfd);
 	}
 
-	slog(LOG_INFO, "starting TAYGA " TAYGA_VERSION "\n");
+	slog(LOG_INFO, "Starting TAYGA " TAYGA_VERSION "\n");
+	slog(LOG_DEBUG, "Compiled from " TAYGA_BRANCH "\n");
+	slog(LOG_DEBUG, "Commit " TAYGA_COMMIT "\n");
 
 	if (gcfg->cache_size) {
 		gcfg->urandom_fd = open("/dev/urandom", O_RDONLY);
