@@ -17,6 +17,8 @@
  */
 
 #include <stdio.h>
+#include <assert.h>
+#include <stdalign.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
@@ -111,7 +113,10 @@ struct ip4 {
 	uint16_t cksum;
 	struct in_addr src;
 	struct in_addr dest;
-} __attribute__ ((__packed__));
+};
+
+static_assert(alignof(struct ip4) <= 4);
+static_assert(sizeof(struct ip4) == 20);
 
 #define IP4_F_DF	0x4000
 #define IP4_F_MF	0x2000
@@ -124,14 +129,20 @@ struct ip6 {
 	uint8_t hop_limit;
 	struct in6_addr src;
 	struct in6_addr dest;
-} __attribute__ ((__packed__));
+};
+
+static_assert(alignof(struct ip6) <= 4);
+static_assert(sizeof(struct ip6) == 40);
 
 struct ip6_frag {
 	uint8_t next_header;
 	uint8_t reserved;
 	uint16_t offset_flags; /* 15-3: frag offset, 2-0: flags */
 	uint32_t ident;
-} __attribute__ ((__packed__));
+};
+
+static_assert(alignof(struct ip6_frag) <= 4);
+static_assert(sizeof(struct ip6_frag) == 8);
 
 #define IP6_F_MF	0x0001
 #define IP6_F_MASK	0xfff8
@@ -141,7 +152,10 @@ struct icmp {
 	uint8_t code;
 	uint16_t cksum;
 	uint32_t word;
-} __attribute__ ((__packed__));
+};
+
+static_assert(alignof(struct icmp) <= 4);
+static_assert(sizeof(struct icmp) == 8);
 
 #define	WKPF	(htonl(0x0064ff9b))
 
@@ -170,6 +184,10 @@ struct pkt {
 	uint32_t header_len; /* inc IP hdr for v4 but excl IP hdr for v6 */
 };
 
+// Ensure that the data field has enough alignment for ip4 and ip6 structs
+static_assert((offsetof(struct pkt, data) & (alignof(struct ip4) - 1)) == 0);
+static_assert((offsetof(struct pkt, data) & (alignof(struct ip6) - 1)) == 0);
+
 /// Type of mapping in mapping list
 enum {
 	MAP_TYPE_STATIC,
@@ -184,7 +202,7 @@ struct map4 {
 	struct in_addr mask;
 	int prefix_len;
 	int type;
-	struct list_head list;
+	struct list_head list; /* gcfg->map4_list */
 };
 
 /// Mapping entry (IPv6)
@@ -193,7 +211,7 @@ struct map6 {
 	struct in6_addr mask;
 	int prefix_len;
 	int type;
-	struct list_head list;
+	struct list_head list; /* gcfg->map6_list */
 };
 
 /// Mapping entry (Static Maps)
@@ -203,10 +221,11 @@ struct map_static {
 	int conffile_lineno;
 };
 
+/// Free addresses
 struct free_addr {
 	uint32_t addr; /* in-use address (host order) */
 	uint32_t count; /* num of free addresses after addr */
-	struct list_head list;
+	struct list_head list; /* list of struct free_addr */
 };
 
 /// Mapping entry (Dynamic Map)
@@ -215,16 +234,16 @@ struct map_dynamic {
 	struct map6 map6;
 	struct cache_entry *cache_entry;
 	time_t last_use;
-	struct list_head list;
+	struct list_head list; /* referenced by struct dynamic_pool */
 	struct free_addr free;
 };
 
 /// Mapping entry (Dynamic Pool)
 struct dynamic_pool {
 	struct map4 map4;
-	struct list_head mapped_list;
-	struct list_head dormant_list;
-	struct list_head free_list;
+	struct list_head mapped_list;  /* list of struct map_dynamic */
+	struct list_head dormant_list; /* list of struct map_dynamic */
+	struct list_head free_list;    /* list of struct free_addr */
 	struct free_addr free_head;
 };
 
@@ -235,9 +254,9 @@ struct cache_entry {
 	time_t last_use;
 	uint32_t flags;
 	uint16_t ip4_ident;
-	struct list_head list;
-	struct list_head hash4;
-	struct list_head hash6;
+	struct list_head list;  /* gcfg->cache_active or gcfg->cache_pool */
+	struct list_head hash4; /* gcfg->hash_table4 */
+	struct list_head hash6; /* gcfg->hash_table6 */
 };
 
 /// Cache flag bits
