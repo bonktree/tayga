@@ -7,24 +7,23 @@ SOURCES := nat64.c addrmap.c dynamic.c tayga.c conffile.c
 # Compile Tayga
 .PHONY: all
 all:
-ifndef $(RELEASE)
-#Generate version.h from git
-	@echo "#define TAYGA_VERSION \"$(shell git describe --tags --dirty)\"" > $@
-	@echo "#define TAYGA_BRANCH \"$(shell git describe --all --dirty)\"" >> $@
-	@echo "#define TAYGA_COMMIT \"$(shell git rev-parse HEAD)\"" >> $@
+ifndef RELEASE
+	@echo $(RELEASE)
+	@echo "#define TAYGA_VERSION \"$(shell git describe --tags --dirty)\"" > version.h
+	@echo "#define TAYGA_BRANCH \"$(shell git describe --all --dirty)\"" >> version.h
+	@echo "#define TAYGA_COMMIT \"$(shell git rev-parse HEAD)\"" >> version.h
 endif
-	$(CC) $(CFLAGS) -o $@ $(SOURCES) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o tayga $(SOURCES) $(LDFLAGS)
 
 # Compile Tayga (static)
 .PHONY: static
 static:
-ifndef $(RELEASE)
-#Generate version.h from git
-	@echo "#define TAYGA_VERSION \"$(shell git describe --tags --dirty)\"" > $@
-	@echo "#define TAYGA_BRANCH \"$(shell git describe --all --dirty)\"" >> $@
-	@echo "#define TAYGA_COMMIT \"$(shell git rev-parse HEAD)\"" >> $@
+ifndef RELEASE
+	@echo "#define TAYGA_VERSION \"$(shell git describe --tags --dirty)\"" > version.h
+	@echo "#define TAYGA_BRANCH \"$(shell git describe --all --dirty)\"" >> version.h
+	@echo "#define TAYGA_COMMIT \"$(shell git rev-parse HEAD)\"" >> version.h
 endif
-	$(CC) $(CFLAGS) -o $@ $(SOURCES) $(LDFLAGS) -static
+	$(CC) $(CFLAGS) -o tayga $(SOURCES) $(LDFLAGS) -static
 
 clean:
 	$(RM) tayga version.h

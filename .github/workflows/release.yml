@@ -1,4 +1,4 @@
-name: Release
+name: Run Release
 
 # Controls when the action will run. Workflow runs when manually triggered using the UI
 # or API.
@@ -27,16 +27,16 @@ jobs:
             echo "#define TAYGA_VERSION \"${{ inputs.ver }}\"" > version.h
             echo "#define TAYGA_BRANCH \"main\"" >> version.h
             echo "#define TAYGA_COMMIT \"RELEASE\"" >> version.h
-            git add version.h
+            git add -f version.h
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "autogenerate release version file"
             git tag ${{ inputs.ver }}
             git push origin ${{ inputs.ver }}
-
-  build-amd64:
+  #Build binaries
+  build-rel:
     needs: tag-rel
-    runs-on: ubuntu-latest  
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with: 
@@ -44,9 +44,12 @@ jobs:
       - uses: jirutka/setup-alpine@v1
         with:
             branch: v3.19
-      - name: Install tools
-        run: apk add gcc make
-        shell: alpine.sh --root {0}
-      - name: run build
+            packages: gcc make libc-dev linux-headers
+      - name: run build x86-64
         run: make static RELEASE=${{ inputs.ver }}
         shell: alpine.sh {0}
+      - uses: actions/upload-artifact@v4
+        with:
+            name: build-amd64
+            path: tayga
+            if-no-files-found: error
