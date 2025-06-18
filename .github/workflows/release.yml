@@ -1,32 +1,52 @@
-# This is a basic workflow that is manually triggered
-
-name: Manual workflow
+name: Release
 
 # Controls when the action will run. Workflow runs when manually triggered using the UI
 # or API.
 on:
   workflow_dispatch:
-    # Inputs the workflow accepts.
     inputs:
-      name:
-        # Friendly description to be shown in the UI instead of 'name'
-        description: 'Person to greet'
-        # Default value if no value is explicitly provided
-        default: 'World'
-        # Input has to be provided for the workflow to run
+      ver:
+        description: 'Version tag'
         required: true
-        # The data type of the input
         type: string
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "greet"
-  greet:
-    # The type of runner that the job will run on
+  # Create version.h and tag release
+  tag-rel:
+    permissions:
+        contents: write
     runs-on: ubuntu-latest
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-    # Runs a single command using the runners shell
-    - name: Send greeting
-      run: echo "Hello ${{ inputs.name }}"
+      - uses: actions/checkout@v4
+        with:
+            # Fetch all
+            fetch-depth: 0
+      - name: Tag release
+        run: |        
+            echo "#define TAYGA_VERSION \"${{ inputs.ver }}\"" > version.h
+            echo "#define TAYGA_BRANCH \"main\"" >> version.h
+            echo "#define TAYGA_COMMIT \"RELEASE\"" >> version.h
+            git add version.h
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "autogenerate release version file"
+            git tag ${{ inputs.ver }}
+            git push origin ${{ inputs.ver }}
+
+  build-amd64:
+    needs: tag-rel
+    runs-on: ubuntu-latest  
+    steps:
+      - uses: actions/checkout@v4
+        with: 
+            ref: ${{ inputs.ver }}
+      - uses: jirutka/setup-alpine@v1
+        with:
+            branch: v3.19
+      - name: Install tools
+        run: apk add gcc make
+        shell: alpine.sh --root {0}
+      - name: run build
+        run: make static RELEASE=${{ inputs.ver }}
+        shell: alpine.sh {0}
