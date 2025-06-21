@@ -1,5 +1,5 @@
 #
-# Sample configuration file for TAYGA 0.9.2
+# Sample configuration file for TAYGA 0.9.6
 #
 # Modify this to use your own addresses!!
 #
@@ -91,9 +91,12 @@ dynamic-pool 192.168.255.0/24
 # directory.  Omit if you do not need these maps to be persistent between
 # instances of TAYGA.
 #
+# Tayga will also respect the environment variable STATE_DIRECTORY if
+# this configuration flag is not set
+#
 # Optional.
 #
-data-dir /var/spool/tayga
+#data-dir /var/lib/tayga
 
 #
 # Establishes a single-host map.  If an IPv6 host should be consistently
