@@ -324,6 +324,7 @@ enum {
 	LOG_OPT_DROP = 	 (1<<1),	//Packet was dropped
 	LOG_OPT_ICMP = 	 (1<<2),	//Packet kicked back an ICMP for any reason
 	LOG_OPT_SELF = 	 (1<<3),	//Packet was destined to ourselves
+	LOG_OPT_CONFIG = (1<<15),	//Log has been configured (used in conf file validation)
 };
 
 /// Packet error codes
@@ -331,6 +332,7 @@ enum {
 	ERROR_NONE = 0,
 	ERROR_REJECT = -1,
 	ERROR_DROP = -2,
+	ERROR_LOCAL = -3,
 };
 
 
@@ -354,6 +356,7 @@ enum {
 
 
 /* TAYGA function prototypes */
+extern struct config *gcfg;
 
 /* addrmap.c */
 int validate_ip4_addr(const struct in_addr *a);
@@ -375,9 +378,9 @@ int map_ip6_to_ip4(struct in_addr *addr4, const struct in6_addr *addr6,
 void addrmap_maint(void);
 
 /* conffile.c */
-void config_init(void);
-void config_read(char *conffile);
-void config_validate(void);
+int config_init(void);
+int config_read(char *conffile);
+int config_validate(void);
 
 /* dynamic.c */
 struct map6 *assign_dynamic(const struct in6_addr *addr6);

@@ -49,7 +49,7 @@ static struct map_static *alloc_map_static(int ln)
 	m = (struct map_static *)malloc(sizeof(struct map_static));
 	if (!m) {
 		slog(LOG_CRIT, "Unable to allocate config memory\n");
-		exit(1);
+		return NULL;
 	}
 	memset(m, 0, sizeof(struct map_static));
 	m->map4.type = MAP_TYPE_STATIC;
@@ -85,7 +85,6 @@ static void abort_on_conflict4(char *msg, int ln, struct map4 *old)
 		slog(LOG_CRIT, "%s conflicts with earlier "
 				"definition of %s/%d%s\n", msg,
 				oldaddr, old->prefix_len, oldline);
-	exit(1);
 }
 
 static void abort_on_conflict6(char *msg, int ln, struct map6 *old)
@@ -109,7 +108,6 @@ static void abort_on_conflict6(char *msg, int ln, struct map6 *old)
 		slog(LOG_CRIT, "%s overlaps with earlier "
 				"definition of %s/%d%s\n", msg,
 				oldaddr, old->prefix_len, oldline);
-	exit(1);
 }
 
 static int config_ipv4_addr(int ln, int arg_count, char **args)
@@ -124,7 +122,11 @@ static int config_ipv4_addr(int ln, int arg_count, char **args)
 				"line %d\n", args[0], ln);
 		return ERROR_REJECT;
 	}
-	if (validate_ip4_addr(&gcfg->local_addr4) < 0) {
+	int ret = validate_ip4_addr(&gcfg->local_addr4);
+	if (ret == ERROR_LOCAL) {
+		slog(LOG_WARNING, "Using link local address %s in ipv4-addr "
+			"directive, use with caution\n", args[0]);
+	} else if(ret < 0) {
 		slog(LOG_CRIT, "Cannot use reserved address %s in ipv4-addr "
 				"directive, aborting...\n", args[0]);
 		return ERROR_REJECT;
@@ -158,6 +160,7 @@ static int config_prefix(int ln, int arg_count, char **args)
 	struct map6 *m6;
 
 	m = alloc_map_static(ln);
+	if(!m) return ERROR_REJECT;
 	m->map4.prefix_len = 0;
 	m->map4.mask.s_addr = 0;
 	m->map4.type = MAP_TYPE_RFC6052;
@@ -254,6 +257,7 @@ static int config_map(int ln, int arg_count, char **args)
 	struct map6 *m6;
 
 	m = alloc_map_static(ln);
+	if(!m) return ERROR_REJECT;
 
 	char *slash;
 	slash = strchr(args[0], '/');
@@ -291,8 +295,11 @@ static int config_map(int ln, int arg_count, char **args)
 	}
 	m->map6.prefix_len = prefix6;
 	calc_ip6_mask(&m->map6.mask, NULL, prefix6);
-        
-	if (validate_ip4_addr(&m->map4.addr) < 0) {
+    int ret = validate_ip4_addr(&m->map4.addr);
+	if (ret == ERROR_LOCAL) {
+		slog(LOG_WARNING, "Using link-local address %s in map "
+			"directive, use with caution\n", args[0]);
+	} else if (ret < 0) {
 		slog(LOG_CRIT, "Cannot use reserved address %s in map "
 				"directive, aborting...\n", args[0]);
 		return ERROR_REJECT;
@@ -301,23 +308,6 @@ static int config_map(int ln, int arg_count, char **args)
 		slog(LOG_CRIT, "Cannot use reserved address %s in map "
 				"directive, aborting...\n", args[1]);
 		return ERROR_REJECT;
-	}
-	if (m->map6.addr.s6_addr32[0] == WKPF &&
-	    m->map6.addr.s6_addr32[1] == 0 &&
-	    m->map6.addr.s6_addr32[2] == 0) {
-		/* This validation must happen later, since we don't know wkpf_strict yet */
-		if(gcfg->wkpf_strict)
-		{
-			slog(LOG_CRIT, "Cannot create single-host maps inside "
-					"64:ff9b::/96, aborting...\n");
-			return ERROR_REJECT;
-		}
-		else 
-		{
-			slog(LOG_INFO, "Should not create single-host maps inside "
-					"64:ff9b::/96, however strict RFC60252"
-					" compliance is disabled\n");
-		}
 	}
 	if (insert_map4(&m->map4, &m4) < 0) {
 		abort_on_conflict4("Error: IPv4 address in map directive",
@@ -363,7 +353,11 @@ static int config_dynamic_pool(int ln, int arg_count, char **args)
 				"line %d\n", args[0], ln);
 		return ERROR_REJECT;
 	}
-	if (validate_ip4_addr(&m4->addr) < 0) {
+	int ret = validate_ip4_addr(&m4->addr);
+	if (ret == ERROR_LOCAL) {
+		slog(LOG_WARNING, "Using link-local address %s in dynamic-pool "
+			"directive, use with caution\n", args[0]);
+	} else if (ret < 0) {
 		slog(LOG_CRIT, "Cannot use reserved address %s in dynamic-pool "
 				"directive, aborting...\n", args[0]);
 		return ERROR_REJECT;
@@ -413,7 +407,7 @@ static int config_strict_fh(int ln, int arg_count, char **args)
 			!strcasecmp(args[0], "0")) {
 		gcfg->lazy_frag_hdr = 1;
 	} else {
-		slog(LOG_CRIT, "Error: invalid value for strict-frag-hdr\n");
+		slog(LOG_CRIT, "Error: invalid value for strict-frag-hdr on line %d\n",ln);
 		return ERROR_REJECT;
 	}
 	return ERROR_NONE;
@@ -421,18 +415,28 @@ static int config_strict_fh(int ln, int arg_count, char **args)
 
 static int config_log(int ln, int arg_count, char **args)
 {
+	if(gcfg->log_opts) {
+		slog(LOG_CRIT, "Error: duplicate log directive on line "
+				"%d\n", ln);
+		return ERROR_REJECT;
+	}
+	/* Set this flag to detect duplicate entries */
+	gcfg->log_opts |= LOG_OPT_CONFIG;
 	/* For each arg we have */
 	for(int i = 0; i < arg_count; i++)
 	{
 		/* Check if this arg matches one of these keys, and enable that key */
 		if(!strcasecmp(args[i],"drop")) gcfg->log_opts |= LOG_OPT_DROP;
-		if(!strcasecmp(args[i],"reject")) gcfg->log_opts |= LOG_OPT_REJECT;
-		if(!strcasecmp(args[i],"icmp")) gcfg->log_opts |= LOG_OPT_ICMP;
-		if(!strcasecmp(args[i],"self")) gcfg->log_opts |= LOG_OPT_SELF;
+		else if(!strcasecmp(args[i],"reject")) gcfg->log_opts |= LOG_OPT_REJECT;
+		else if(!strcasecmp(args[i],"icmp")) gcfg->log_opts |= LOG_OPT_ICMP;
+		else if(!strcasecmp(args[i],"self")) gcfg->log_opts |= LOG_OPT_SELF;
+		else {
+			slog(LOG_CRIT, "Error: invalid value for log on line %d\n",ln);
+			return ERROR_REJECT;
+		}
 	}
 	return ERROR_NONE;
 }
-
 
 static int config_offlink_mtu(int ln, int arg_count, char **args)
 {
@@ -487,13 +491,13 @@ struct {
 	{ NULL, NULL, 0 }
 };
 
-void config_init(void)
+int config_init(void)
 {
 	/* Initialize configuration structure to defaults */
 	gcfg = (struct config *)malloc(sizeof(struct config));
 	if (!gcfg) {
 		slog(LOG_CRIT, "Unable to allocate config memory\n");
-		exit(1);
+		return ERROR_REJECT;
 	}
 	memset(gcfg, 0, sizeof(struct config));
 	gcfg->recv_buf_size = 65536 + sizeof(struct tun_pi);
@@ -509,9 +513,10 @@ void config_init(void)
 	INIT_LIST_HEAD(&gcfg->cache_active);
 	gcfg->wkpf_strict = 1;
 	gcfg->udp_cksum_mode = UDP_CKSUM_DROP;
+	return ERROR_NONE;
 }
 
-void config_read(char *conffile)
+int config_read(char *conffile)
 {
 	FILE *in;
 	int ln = 0;
@@ -530,7 +535,7 @@ void config_read(char *conffile)
 	if (!in) {
 		slog(LOG_CRIT, "unable to open %s, aborting: %s\n", conffile,
 				strerror(errno));
-		exit(1);
+		return ERROR_REJECT;
 	}
 	/* Parse each line of conf file */
 	while (fgets(line, sizeof(line), in)) {
@@ -578,10 +583,11 @@ void config_read(char *conffile)
 	fclose(in);
 
 	/* At this point, exit if we had parsing errors */
-	if(willexit) exit(1);
+	if(willexit) return ERROR_REJECT;
+	return ERROR_NONE;
 }
 
-void config_validate(void)
+int config_validate(void)
 {
 	struct map_static *m;
 	struct map4 *m4;
@@ -592,7 +598,7 @@ void config_validate(void)
 	if (list_empty(&gcfg->map6_list)) {
 		slog(LOG_CRIT, "Error: no translation maps or NAT64 prefix "
 				"configured\n");
-		exit(1);
+		return ERROR_REJECT;
 	}
 
 	/* Check if the env var STATE_DIRECTORY exists to use as data_dir
@@ -604,25 +610,25 @@ void config_validate(void)
 		if (sd[0] != '/') {
 			slog(LOG_CRIT, "Error: STATE_DIRECTORY must be an "
 				"absolute path\n");
-			exit(1);
+			return ERROR_REJECT;
 		}
 		/* Copy env var into data_dir */
 		if(strlen(sd) + 1 > sizeof(gcfg->data_dir)) {
-			slog(LOG_CRIT, "STATE_DIRECTORY env var is too long, "
+			slog(LOG_CRIT, "Error: STATE_DIRECTORY is too long, "
 					"aborting...\n");
-			exit(1);
-		}
-		/* Check for a : which signifies that we have multiple dirs */
-		for(int i = 0; sd[i]; i++) {
-			if(sd[i] == ':') {
-				slog(LOG_WARNING, "STATE_DIRECTORY env var contains "
-						"multiple directories, using first one\n");
-				sd[i] = 0;
-				break;
-			}
+			return ERROR_REJECT;
 		}
 		/* Copy state directory */
 		strcpy(gcfg->data_dir, sd);
+		/* Check for a : which signifies that we have multiple dirs */
+		for(int i = 0; gcfg->data_dir[i]; i++) {
+			if(gcfg->data_dir[i] == ':') {
+				slog(LOG_WARNING, "STATE_DIRECTORY env var contains "
+						"multiple directories, using first one\n");
+				gcfg->data_dir[i] = 0;
+				break;
+			}
+		}
 	}
 
 	m4 = list_entry(gcfg->map4_list.next, struct map4, list);
@@ -635,13 +641,16 @@ void config_validate(void)
 	
 	if (!gcfg->local_addr4.s_addr) {
 		slog(LOG_CRIT, "Error: no ipv4-addr directive found\n");
-		exit(1);
+		return ERROR_REJECT;
 	}
 
 	m = alloc_map_static(0);
+	if(!m) return ERROR_REJECT;
 	m->map4.addr = gcfg->local_addr4;
-	if (insert_map4(&m->map4, &m4) < 0)
+	if (insert_map4(&m->map4, &m4) < 0) {
 		abort_on_conflict4("Error: ipv4-addr", 0, m4);
+		return ERROR_REJECT;
+	}
 
 	/* ipv6-addr is configured and is within the well known prefix */
 	if (gcfg->local_addr6.s6_addr32[0] == WKPF &&
@@ -652,7 +661,7 @@ void config_validate(void)
 		slog(LOG_CRIT, "Error: ipv6-addr directive cannot contain an "
 				"address in the Well-Known Prefix "
 				"(64:ff9b::/96)\n");
-		exit(1);
+		return ERROR_REJECT;
 	/* ipv6-addr is configured but not within the well known prefix */
 	} else if (gcfg->local_addr6.s6_addr32[0]) {
 		m->map6.addr = gcfg->local_addr6;
@@ -664,9 +673,10 @@ void config_validate(void)
 						"within configured prefix "
 						"%s/%d\n", addrbuf,
 						m6->prefix_len);
-				exit(1);
+				return ERROR_REJECT;
 			} else {
 				abort_on_conflict6("Error: ipv6-addr", 0, m6);
+				return ERROR_REJECT;
 			}
 		}	
 	/* ipv6-addr is zero (not set), generate from ipv4-addr and prefix */
@@ -676,7 +686,7 @@ void config_validate(void)
 			slog(LOG_CRIT, "Error: ipv6-addr directive must be "
 					"specified if no NAT64 prefix is "
 					"configured\n");
-			exit(1);
+			return ERROR_REJECT;
 		}
 		if (append_to_prefix(&gcfg->local_addr6, &gcfg->local_addr4,
 					&m6->addr, m6->prefix_len)) {
@@ -686,7 +696,7 @@ void config_validate(void)
 						"specified if prefix is 64:ff9b::/96 "
 						"and ipv4-addr is a non-global "
 						"(RFC 1918) address\n");
-				exit(1);
+				return ERROR_REJECT;
 			}
 		}
 		m->map6.addr = gcfg->local_addr6;
@@ -694,5 +704,12 @@ void config_validate(void)
 
 	/* Offlink MTU defaults to 1280 if not set */
 	if (gcfg->ipv6_offlink_mtu <= MTU_MIN) gcfg->ipv6_offlink_mtu = MTU_MIN;
-	return;
+	
+	/* Tundev must be provided */
+	if(strlen(gcfg->tundev) < 1) {
+		slog(LOG_CRIT, "Error: no tun-device directive found\n");
+		return ERROR_REJECT;
+	}
+
+	return ERROR_NONE;
 }
