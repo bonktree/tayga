@@ -4,6 +4,12 @@ CFLAGS ?= -Wall -O2
 LDFLAGS ?= -flto=auto
 SOURCES := nat64.c addrmap.c dynamic.c tayga.c conffile.c
 
+#Check for release file / variable
+-include release
+ifdef RELEASE
+$(info Using RELEASE $(RELEASE))
+endif
+
 #Default installation paths (may be overridden by environment variables)
 prefix ?= /usr/local
 exec_prefix ?= $(prefix)
@@ -42,8 +48,12 @@ endif
 
 # Test suite compiles with -Werror to detect compiler warnings
 .PHONY: test
-# TODO these are only valid for GCC
+# these are only valid for GCC
+ifeq ($(CC),gcc)
 TEST_CFLAGS := $(CFLAGS) -Werror -coverage -fcondition-coverage -DCOVERAGE_TESTING
+else
+TEST_CFLAGS := $(CFLAGS) -Werror -DCOVERAGE_TESTING
+endif
 TEST_FILES := test/unit.c
 test:
 	@$(RM) *.gcda || true
