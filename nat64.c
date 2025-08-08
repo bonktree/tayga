@@ -836,7 +836,7 @@ static void host_handle_icmp6(struct pkt *p)
 }
 
 static void xlate_header_6to4(struct pkt *p, struct ip4 *ip4,
-		int payload_length, struct cache_entry *dest)
+		int payload_length)
 {
 	ip4->ver_ihl = 0x45;
 	ip4->tos = (ntohl(p->ip6->ver_tc_fl) >> 20) & 0xff;
@@ -975,7 +975,7 @@ static void xlate_6to4_data(struct pkt *p)
 		return;
 	}
 
-	xlate_header_6to4(p, &header.ip4, p->data_len, dest);
+	xlate_header_6to4(p, &header.ip4, p->data_len);
 	--header.ip4.ttl;
 
 	if (xlate_payload_6to4(p, &header.ip4,0) < 0)
@@ -1230,7 +1230,7 @@ static void xlate_6to4_icmp_error(struct pkt *p)
 	}
 
 	xlate_header_6to4(&p_em, &header.ip4_em,
-		ntohs(p_em.ip6->payload_length) - p_em.header_len, NULL);
+		ntohs(p_em.ip6->payload_length) - p_em.header_len);
 
 	header.ip4_em.cksum =
 		ip_checksum(&header.ip4_em, sizeof(header.ip4_em));
@@ -1249,7 +1249,7 @@ static void xlate_6to4_icmp_error(struct pkt *p)
 	}
 
 	xlate_header_6to4(p, &header.ip4, sizeof(header.icmp) +
-				sizeof(header.ip4_em) + p_em.data_len, NULL);
+				sizeof(header.ip4_em) + p_em.data_len);
 	--header.ip4.ttl;
 
 	header.ip4.cksum = ip_checksum(&header.ip4, sizeof(header.ip4));
