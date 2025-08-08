@@ -293,7 +293,7 @@ struct config {
 	struct dynamic_pool *dynamic_pool;
 	int hash_bits;
 	int cache_size;
-	int ipv6_offlink_mtu;
+	uint32_t ipv6_offlink_mtu;
 
 	int urandom_fd;
 	int tun_fd;
