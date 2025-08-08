@@ -166,7 +166,7 @@ static_assert(sizeof(struct icmp) == 8,"Struct ICMP must be 8 bytes long");
 
    (See http://www.ietf.org/mail-archive/web/behave/current/msg08499.html)
  */
-#define MTU_ADJ		20
+#define MTU_ADJ		20u
 
 /* Minimum MTU allowed by IPv6 */
 #define MTU_MIN 1280
